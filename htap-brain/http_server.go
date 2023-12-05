@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 )
 
@@ -30,6 +31,7 @@ func (s *Server) write(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := r.Form.Get("query")
+	//fmt.Println("QUERY", query)
 	err = s.htap.Write(query)
 	if err != nil {
 		w.WriteHeader(http.StatusBadGateway)
@@ -38,5 +40,18 @@ func (s *Server) write(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *Server) read(w http.ResponseWriter, r *http.Request) {
-
+	err := r.ParseForm()
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	query := r.Form.Get("query")
+	fmt.Println("QUERY", query)
+	err = s.htap.Query(query)
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte(err.Error()))
+		return
+	}
 }

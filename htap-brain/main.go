@@ -6,9 +6,10 @@ import (
 )
 
 func main() {
+	os.RemoveAll("wal")
+
 	h, err := NewHTAPBrain()
 	handleErr(err)
-
 	server := NewServer(h)
 	handleErr(server.ListenAndServe())
 }

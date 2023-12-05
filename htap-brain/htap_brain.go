@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"strings"
 
 	cdriver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	_ "github.com/lib/pq"
@@ -20,6 +21,8 @@ type HTAPBrain struct {
 	wal             *wlog.WL
 	walLiveReader   *wlog.LiveReader
 	walReaderCloser io.Closer
+
+	c chan struct{}
 }
 
 func NewHTAPBrain() (*HTAPBrain, error) {
@@ -37,7 +40,7 @@ func NewHTAPBrain() (*HTAPBrain, error) {
 	if w.chClientRead, err = makeClickhouseClient(); err != nil {
 		return nil, err
 	}
-	if w.wal, err = wlog.NewSize(nil, nil, "wal", 10*wlog.DefaultSegmentSize, false); err != nil {
+	if w.wal, err = wlog.NewSize(nil, nil, "wal", 10*wlog.DefaultSegmentSize, wlog.CompressionNone); err != nil {
 		return nil, err
 	}
 	segment, err := wlog.OpenReadSegment(wlog.SegmentName("wal", 0))
@@ -47,6 +50,8 @@ func NewHTAPBrain() (*HTAPBrain, error) {
 	w.walReaderCloser = segment
 
 	w.walLiveReader = wlog.NewLiveReader(nil, wlog.NewLiveReaderMetrics(nil), segment)
+
+	w.c = make(chan struct{}, 100000)
 
 	go func() {
 		err := w.writeToClickhouseLoop()
@@ -60,6 +65,7 @@ func NewHTAPBrain() (*HTAPBrain, error) {
 
 func (w *HTAPBrain) Write(query string) error {
 	if err := w.writeToPostgres(query); err != nil {
+		fmt.Println(err)
 		return err
 	}
 
@@ -67,22 +73,49 @@ func (w *HTAPBrain) Write(query string) error {
 		return err
 	}
 
+	w.c <- struct{}{}
+
 	return nil
 }
 
 func (w *HTAPBrain) Query(query string) error {
 	olapQueries := map[string]bool{
-		"Example": true,
+		"select AVG(user_age) from htap_table": true,
 	}
 	if olapQueries[query] {
+		fmt.Println("Reading clickhouse")
 		return w.queryClickhouse(query)
 	}
+	fmt.Println("Reading postgres")
 	return w.queryPostgres(query)
 }
 
 func (w *HTAPBrain) writeToClickhouseLoop() error {
-	for w.walLiveReader.Next() {
+	for {
+		select {
+		case <-w.c:
+		}
+		if !w.walLiveReader.Next() {
+			break
+		}
 		query := string(w.walLiveReader.Record())
+
+		s := strings.Split(query, "VALUES")
+		s = strings.Split(s[1], "),(")
+		for i := range s {
+			s[i] = strings.Replace(s[i], "(", "", -1)
+			s[i] = strings.Replace(s[i], ")", "", -1)
+			spl := strings.Split(s[i], ",")
+			s[i] = fmt.Sprintf("(%s, %s)", spl[0], spl[1])
+		}
+
+		query = fmt.Sprintf(`
+			INSERT INTO htap_table
+			(user_name, user_age)
+			VALUES
+			%s	    
+		`, strings.Join(s, ","))
+
 		err := w.chClientWrite.Exec(context.Background(), query)
 		if err != nil {
 			return err
@@ -102,10 +135,6 @@ func (w *HTAPBrain) queryClickhouse(query string) error {
 		return err
 	}
 	for rows.Next() {
-		if err := rows.Scan(); err != nil {
-			panic(err) // TODO: remove this panic
-			return err
-		}
 	}
 	return nil
 }
@@ -116,15 +145,12 @@ func (w *HTAPBrain) queryPostgres(query string) error {
 		return err
 	}
 	for rows.Next() {
-		if err := rows.Scan(); err != nil {
-			panic(err) // TODO: remove this panic
-			return err
-		}
 	}
 	return nil
 }
 
 func (w *HTAPBrain) Close() error {
+	close(w.c)
 	err1 := w.psqlClientWrite.Close()
 	err2 := w.chClientWrite.Close()
 	if err1 != nil || err2 != nil {
