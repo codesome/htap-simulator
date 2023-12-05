@@ -21,28 +21,28 @@ import time
 # Function to generate an INSERT query statement: keep querying on your endpoint to generate more statements
 # Replicate these statements according to what we need to load into the database
 def generate_insert_query():
-#     """ For clickhouse
+#     For clickhouse
 #     CREATE TABLE htap_table
 #     (
 #         user_name String,
 #         user_age UInt8
-#     ) engine=MergeTree ORDER BY user_age """
-    """ For postgres
-    CREATE TABLE htap_table
-    (
-        id serial primary key,
-        user_name VARCHAR(20),
-        user_age INT,
-        user_email VARCHAR(50),
-        user_city VARCHAR(20),
-        user_country VARCHAR(20),
-        registration_date VARCHAR(20),
-        is_active BOOLEAN,
-        user_interest VARCHAR(20),
-        visit_count INT,
-        user_category VARCHAR(20)
-    )
-    """
+#     ) engine=MergeTree ORDER BY user_age
+#
+#     For postgres
+#     CREATE TABLE htap_table
+#     (
+#         id serial primary key,
+#         user_name VARCHAR(20),
+#         user_age INT,
+#         user_email VARCHAR(50),
+#         user_city VARCHAR(20),
+#         user_country VARCHAR(20),
+#         registration_date VARCHAR(20),
+#         is_active BOOLEAN,
+#         user_interest VARCHAR(20),
+#         visit_count INT,
+#         user_category VARCHAR(20)
+#     )
 
     query = """
     INSERT INTO htap_table

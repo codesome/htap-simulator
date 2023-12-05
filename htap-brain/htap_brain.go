@@ -83,10 +83,10 @@ func (w *HTAPBrain) Query(query string) error {
 		"select AVG(user_age) from htap_table": true,
 	}
 	if olapQueries[query] {
-		fmt.Println("Reading clickhouse")
+		fmt.Println("Reading clickhouse:", query)
 		return w.queryClickhouse(query)
 	}
-	fmt.Println("Reading postgres")
+	fmt.Println("Reading postgres:", query)
 	return w.queryPostgres(query)
 }
 

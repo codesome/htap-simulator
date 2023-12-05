@@ -11,7 +11,7 @@ import (
 func makePostgresClient() (*sql.DB, error) {
 	psqlInfo := fmt.Sprintf("host=%s port=%d "+
 		"dbname=%s sslmode=disable",
-		"127.0.0.1", 5432, "polardb")
+		"127.0.0.1", 5432, "htap")
 	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {
 		return nil, err
@@ -29,7 +29,7 @@ func makeClickhouseClient() (cdriver.Conn, error) {
 		conn, err = clickhouse.Open(&clickhouse.Options{
 			Addr: []string{"127.0.0.1:9000"},
 			Auth: clickhouse.Auth{
-				Database: "polardb",
+				Database: "htap",
 				Username: "default",
 				Password: "",
 			},
