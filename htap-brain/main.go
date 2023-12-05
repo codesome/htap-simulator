@@ -6,14 +6,11 @@ import (
 )
 
 func main() {
-	w, err := NewWriter()
-	handleErr(err)
-	q, err := NewQuerier()
+	h, err := NewHTAPBrain()
 	handleErr(err)
 
-	server := NewServer(w, q)
-	err = server.ListenAndServe()
-	handleErr(err)
+	server := NewServer(h)
+	handleErr(server.ListenAndServe())
 }
 
 func handleErr(err error) {

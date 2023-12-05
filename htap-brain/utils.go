@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"database/sql"
 	"fmt"
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -10,7 +9,9 @@ import (
 )
 
 func makePostgresClient() (*sql.DB, error) {
-	psqlInfo := fmt.Sprintf("")
+	psqlInfo := fmt.Sprintf("host=%s port=%d "+
+		"dbname=%s sslmode=disable",
+		"127.0.0.1", 5432, "polardb")
 	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {
 		return nil, err
@@ -26,27 +27,26 @@ func makeClickhouseClient() (cdriver.Conn, error) {
 	var (
 		ctx       = context.Background()
 		conn, err = clickhouse.Open(&clickhouse.Options{
-			Addr: []string{"<CLICKHOUSE_SECURE_NATIVE_HOSTNAME>:9440"},
+			Addr: []string{"127.0.0.1:9000"},
 			Auth: clickhouse.Auth{
-				Database: "default",
+				Database: "polardb",
 				Username: "default",
-				Password: "<DEFAULT_USER_PASSWORD>",
+				Password: "",
 			},
-			ClientInfo: clickhouse.ClientInfo{
-				Products: []struct {
-					Name    string
-					Version string
-				}{
-					{Name: "an-example-go-client", Version: "0.1"},
-				},
-			},
-
-			Debugf: func(format string, v ...interface{}) {
-				fmt.Printf(format, v)
-			},
-			TLS: &tls.Config{
-				InsecureSkipVerify: true,
-			},
+			//ClientInfo: clickhouse.ClientInfo{
+			//	Products: []struct {
+			//		Name    string
+			//		Version string
+			//	}{
+			//		{Name: "an-example-go-client", Version: "0.1"},
+			//	},
+			//},
+			//Debugf: func(format string, v ...interface{}) {
+			//	fmt.Printf(format, v)
+			//},
+			//TLS: &tls.Config{
+			//	InsecureSkipVerify: true,
+			//},
 		})
 	)
 

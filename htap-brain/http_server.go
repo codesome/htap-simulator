@@ -5,15 +5,13 @@ import (
 )
 
 type Server struct {
-	mux     *http.ServeMux
-	writer  *Writer
-	querier *Querier
+	mux  *http.ServeMux
+	htap *HTAPBrain
 }
 
-func NewServer(w *Writer, q *Querier) *Server {
+func NewServer(htap *HTAPBrain) *Server {
 	return &Server{
-		writer:  w,
-		querier: q,
+		htap: htap,
 	}
 }
 
@@ -25,7 +23,19 @@ func (s *Server) ListenAndServe() error {
 }
 
 func (s *Server) write(w http.ResponseWriter, r *http.Request) {
-
+	err := r.ParseForm()
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	query := r.Form.Get("query")
+	err = s.htap.Write(query)
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte(err.Error()))
+		return
+	}
 }
 func (s *Server) read(w http.ResponseWriter, r *http.Request) {
 
