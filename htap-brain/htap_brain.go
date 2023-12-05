@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
 	cdriver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	_ "github.com/lib/pq"
 	"github.com/prometheus/prometheus/tsdb/wlog"
@@ -157,4 +158,37 @@ func (w *HTAPBrain) Close() error {
 		return fmt.Errorf("postgres error = %q, clickhouse error = %q", err1, err2)
 	}
 	return w.walReaderCloser.Close()
+}
+
+func makePostgresClient() (*sql.DB, error) {
+	db, err := sql.Open("postgres", "host=127.0.0.1 port=5432 dbname=htap sslmode=disable")
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Ping(); err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+func makeClickhouseClient() (cdriver.Conn, error) {
+	conn, err := clickhouse.Open(&clickhouse.Options{
+		Addr: []string{"127.0.0.1:9000"},
+		Auth: clickhouse.Auth{
+			Database: "htap",
+			Username: "default",
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := conn.Ping(context.Background()); err != nil {
+		if exception, ok := err.(*clickhouse.Exception); ok {
+			fmt.Printf("Exception [%d] %s \n%s\n", exception.Code, exception.Message, exception.StackTrace)
+		}
+		return nil, err
+	}
+
+	return conn, nil
 }
