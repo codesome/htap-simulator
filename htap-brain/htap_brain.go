@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	cdriver "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -23,7 +25,7 @@ type HTAPBrain struct {
 	walLiveReader   *wlog.LiveReader
 	walReaderCloser io.Closer
 
-	c chan struct{}
+	signalClickhouseWrite chan struct{}
 }
 
 func NewHTAPBrain() (*HTAPBrain, error) {
@@ -41,18 +43,21 @@ func NewHTAPBrain() (*HTAPBrain, error) {
 	if w.chClientRead, err = makeClickhouseClient(); err != nil {
 		return nil, err
 	}
+
+	// WAL.
 	if w.wal, err = wlog.NewSize(nil, nil, "wal", 10*wlog.DefaultSegmentSize, wlog.CompressionNone); err != nil {
 		return nil, err
 	}
+
+	// Live WAL reader to read from WAL and write to Clickhouse.
 	segment, err := wlog.OpenReadSegment(wlog.SegmentName("wal", 0))
 	if err != nil {
 		return nil, err
 	}
 	w.walReaderCloser = segment
-
 	w.walLiveReader = wlog.NewLiveReader(nil, wlog.NewLiveReaderMetrics(nil), segment)
 
-	w.c = make(chan struct{}, 100000)
+	w.signalClickhouseWrite = make(chan struct{}, 100000)
 
 	go func() {
 		err := w.writeToClickhouseLoop()
@@ -74,7 +79,8 @@ func (w *HTAPBrain) Write(query string) error {
 		return err
 	}
 
-	w.c <- struct{}{}
+	// Temporary measure of signaling because the WAL package does not wait for new records.
+	w.signalClickhouseWrite <- struct{}{}
 
 	return nil
 }
@@ -84,23 +90,57 @@ func (w *HTAPBrain) Query(query string) error {
 		"select AVG(user_age) from htap_table": true,
 	}
 	if olapQueries[query] {
-		fmt.Println("Reading clickhouse:", query)
-		return w.queryClickhouse(query)
+		// Query clickhouse and postgres in parallel to compare them.
+
+		var wg sync.WaitGroup
+		var d1, d2 time.Duration
+		wg.Add(2)
+		go func() {
+			start := time.Now()
+			err := w.queryClickhouse(query)
+			if err != nil {
+				fmt.Println("Clickhouse query error:", err)
+			}
+			d1 = time.Since(start)
+			wg.Done()
+		}()
+		go func() {
+			start := time.Now()
+			err := w.queryPostgres(query)
+			if err != nil {
+				fmt.Println("Postgres query error:", err)
+			}
+			d2 = time.Since(start)
+			wg.Done()
+		}()
+
+		wg.Wait()
+
+		p := float64(d1.Microseconds()) / float64(d2.Microseconds())
+		if p < 1.0 {
+			fmt.Printf("ratio=%.3f, FASTER!\n", p)
+		} else {
+			fmt.Printf("ratio=%.3f, --slower\n", p)
+		}
+		return nil
 	}
-	fmt.Println("Reading postgres:", query)
+
 	return w.queryPostgres(query)
 }
 
 func (w *HTAPBrain) writeToClickhouseLoop() error {
 	for {
 		select {
-		case <-w.c:
+		case <-w.signalClickhouseWrite:
 		}
 		if !w.walLiveReader.Next() {
 			break
 		}
+
+		// Record read from the WAL.
 		query := string(w.walLiveReader.Record())
 
+		// Pick only required columns.
 		s := strings.Split(query, "VALUES")
 		s = strings.Split(s[1], "),(")
 		for i := range s {
@@ -151,7 +191,7 @@ func (w *HTAPBrain) queryPostgres(query string) error {
 }
 
 func (w *HTAPBrain) Close() error {
-	close(w.c)
+	close(w.signalClickhouseWrite)
 	err1 := w.psqlClientWrite.Close()
 	err2 := w.chClientWrite.Close()
 	if err1 != nil || err2 != nil {

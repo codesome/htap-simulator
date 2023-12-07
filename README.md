@@ -1,11 +1,18 @@
 # HTAP Simulator
 
+Project link: https://github.com/codesome/htap-simulator/
+
 <img src="assets/img/htap-simulator-architecture.png" alt="Architecture" width="400"/>
 
+1) Install PostgreSQL and Clickhouse
+   * PostgreSQL installation instructions: https://www.postgresql.org/download/
+   * Clickhouse installation instructions: https://clickhouse.com/docs/en/install
 
-1) Start Postgres server and Clickhouse server on their default ports
-2) Create a database named `htap` in both of them
-3) Create the following tables
+2) Start PostgreSQL and Clickhouse servers on their default port. (PostgreSQL is queryable from port 5432 and Clickhouse is querable from port 9000)
+ 
+3) Create a database named `htap` in both of them. For clickhouse, the database should be created under the `default` user.
+
+4) Create the following tables
 
     In Postgres
     ```
@@ -36,15 +43,25 @@
     ORDER BY user_age
     ```
 
-4) Start the htap-simulator
+5) Install the `go` compiler if you do not already have it (https://go.dev/doc/install).
+
+6) Start the htap-simulator
 
     ```bash
     $ go run htap-brain/*
+    # Optional. If you get any error for above saying packages are not vendored,
+    # run the below command to fetch the dependencies and start htap-brain again.
+    $ $ go mod vendor
     ```
 
-5) Start the write and read load in parallel
+7) Start the read and write load in separate terminals
+
+    For now, the read-load only produces OLAP queries. `load-generator/read.py` has instructions to change it to produce OLTP queries as well (a single line edit, search for `TODO` in that file).
+
+    ```bash
+    $ python3 load-generator/read.py
+    ```
 
     ```bash
     $ python3 load-generator/write.py
-    $ python3 load-generator/read.py
     ```
